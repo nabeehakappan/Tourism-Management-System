@@ -2,6 +2,7 @@ import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
 import Destinations from "./pages/Destination";
 import Packages from "./pages/Packages";
+import Tourists from "./pages/Tourists";
 
 function App() {
   return (
@@ -14,7 +15,7 @@ function App() {
         <Topbar />
 
         <main>
-          <Packages />
+          <Tourists />
         </main>
 
       </div>
