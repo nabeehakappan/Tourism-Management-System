@@ -1,30 +1,24 @@
-import { MapPin, ArrowRight } from "lucide-react";
+import Sidebar from "./components/Sidebar";
+import Topbar from "./components/Topbar";
+import Dashboard from "./pages/Dashboard";
 
 function App() {
   return (
-    <main className="min-h-screen bg-[#F7F5F0] flex items-center justify-center px-6">
-      <div className="max-w-3xl text-center">
+    <div className="min-h-screen bg-[#F7F5F0] flex">
 
-        <p className="text-sm tracking-[0.3em] uppercase text-[#8B7355] mb-6">
-          Tourism Management System
-        </p>
+      <Sidebar />
 
-        <h1 className="font-['Playfair_Display'] text-6xl md:text-7xl text-[#1C1C1C] mb-6">
-          TRAVELIA
-        </h1>
+      <div className="flex-1 min-w-0">
 
-        <p className="text-lg text-[#77736D] max-w-xl mx-auto leading-relaxed mb-10">
-          Discover destinations, manage journeys, and create
-          unforgettable travel experiences.
-        </p>
+        <Topbar />
 
-        <button className="inline-flex items-center gap-3 bg-[#1C1C1C] text-white px-6 py-3 rounded-lg hover:bg-[#333333] transition">
-          Explore dashboard
-          <ArrowRight size={18} />
-        </button>
+        <main>
+          <Dashboard />
+        </main>
 
       </div>
-    </main>
+
+    </div>
   );
 }
 
