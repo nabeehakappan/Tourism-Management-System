@@ -1,6 +1,7 @@
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
-import Dashboard from "./pages/Dashboard";
+import Destinations from "./pages/Destination";
+import Packages from "./pages/Packages";
 
 function App() {
   return (
@@ -13,7 +14,7 @@ function App() {
         <Topbar />
 
         <main>
-          <Dashboard />
+          <Packages />
         </main>
 
       </div>
