@@ -18,7 +18,7 @@ function App() {
         <Topbar />
 
         <main>
-          <Guides />
+          <Destinations />
         </main>
 
       </div>
