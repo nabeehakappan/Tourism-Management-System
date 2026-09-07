@@ -1,3 +1,4 @@
+import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   Users,
@@ -11,13 +12,13 @@ import {
 } from "lucide-react";
 
 const menuItems = [
-  { name: "Overview", icon: LayoutDashboard },
-  { name: "Tourists", icon: Users },
-  { name: "Destinations", icon: Map },
-  { name: "Packages", icon: Briefcase },
-  { name: "Bookings", icon: CalendarDays },
-  { name: "Payments", icon: CreditCard },
-  { name: "Guides", icon: UserRound },
+  { name: "Overview", icon: LayoutDashboard, path: "/" },
+  { name: "Tourists", icon: Users, path: "/tourists" },
+  { name: "Destinations", icon: Map, path: "/destinations" },
+  { name: "Packages", icon: Briefcase, path: "/packages" },
+  { name: "Bookings", icon: CalendarDays, path: "/bookings" },
+  { name: "Payments", icon: CreditCard, path: "/payments" },
+  { name: "Guides", icon: UserRound, path: "/guides" },
 ];
 
 function Sidebar() {
@@ -43,25 +44,28 @@ function Sidebar() {
         </p>
 
         <div className="space-y-1">
-          {menuItems.map((item, index) => {
-            const Icon = item.icon;
-            const active = index === 0;
+  {menuItems.map((item) => {
+    const Icon = item.icon;
 
-            return (
-              <button
-                key={item.name}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition ${
-                  active
-                    ? "bg-white/10 text-white"
-                    : "text-[#A9A49C] hover:bg-white/5 hover:text-white"
-                }`}
-              >
-                <Icon size={18} strokeWidth={1.7} />
-                <span>{item.name}</span>
-              </button>
-            );
-          })}
-        </div>
+    return (
+      <NavLink
+        key={item.name}
+        to={item.path}
+        end={item.path === "/"}
+        className={({ isActive }) =>
+          `w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm transition ${
+            isActive
+              ? "bg-white/10 text-white"
+              : "text-[#A9A49C] hover:bg-white/5 hover:text-white"
+          }`
+        }
+      >
+        <Icon size={18} strokeWidth={1.7} />
+        <span>{item.name}</span>
+      </NavLink>
+    );
+  })}
+</div>
 
       </nav>
 
