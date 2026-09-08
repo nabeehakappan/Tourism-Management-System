@@ -6,16 +6,10 @@ const router = express.Router();
 
 /*
  * Convert any incoming date value to YYYY-MM-DD.
- *
- * Handles:
- * - "2026-09-08"
- * - "2026-09-08T00:00:00.000Z"
- * - JavaScript Date objects
  */
 function normalizeDate(dateValue) {
     if (!dateValue) return null;
 
-    // If Oracle/node-oracledb gives us a JavaScript Date object
     if (dateValue instanceof Date) {
         const year = dateValue.getFullYear();
         const month = String(dateValue.getMonth() + 1).padStart(2, "0");
@@ -26,12 +20,10 @@ function normalizeDate(dateValue) {
 
     const value = String(dateValue).trim();
 
-    // Already YYYY-MM-DD or ISO format
     if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
         return value.substring(0, 10);
     }
 
-    // Try parsing other date formats
     const parsedDate = new Date(value);
 
     if (!isNaN(parsedDate.getTime())) {
@@ -110,7 +102,6 @@ router.post("/:guideId", async (req, res) => {
         const normalizedDate = normalizeDate(reviewDate);
         const numericRating = Number(rating);
 
-        // Basic validation
         if (
             !guideId ||
             !reviewText ||
@@ -180,6 +171,8 @@ router.post("/:guideId", async (req, res) => {
 /* =========================================================
    UPDATE REVIEW
    PUT /api/reviews/:guideId
+   Now targets the exact row via reviewRowId instead of
+   matching on the old text/date/rating combination.
    ========================================================= */
 
 router.put("/:guideId", async (req, res) => {
@@ -187,33 +180,25 @@ router.put("/:guideId", async (req, res) => {
 
     try {
         const {
-            oldReviewText,
-            oldReviewDate,
-            oldRating,
+            reviewRowId,
             reviewText,
             reviewDate,
             rating
         } = req.body;
 
         const guideId = Number(req.params.guideId);
-
-        const oldDate = normalizeDate(oldReviewDate);
         const newDate = normalizeDate(reviewDate);
-
-        const numericOldRating = Number(oldRating);
         const numericNewRating = Number(rating);
 
         if (
             !guideId ||
-            !oldReviewText ||
-            !oldDate ||
-            !numericOldRating ||
+            !reviewRowId ||
             !reviewText ||
             !newDate ||
             !numericNewRating
         ) {
             return res.status(400).json({
-                message: "All review fields are required"
+                message: "Review row ID, text, date and rating are required"
             });
         }
 
@@ -234,19 +219,15 @@ router.put("/:guideId", async (req, res) => {
             SET Review_Text = :reviewText,
                 Review_Date = TO_DATE(:reviewDate, 'YYYY-MM-DD'),
                 Rating = :rating
-            WHERE Guide_ID = :guideId
-              AND Review_Text = :oldReviewText
-              AND TO_CHAR(Review_Date, 'YYYY-MM-DD') = :oldReviewDate
-              AND Rating = :oldRating
+            WHERE ROWID = CHARTOROWID(:reviewRowId)
+              AND Guide_ID = :guideId
             `,
             {
-                guideId,
-                oldReviewText,
-                oldReviewDate: oldDate,
-                oldRating: numericOldRating,
                 reviewText,
                 reviewDate: newDate,
-                rating: numericNewRating
+                rating: numericNewRating,
+                reviewRowId,
+                guideId
             },
             {
                 autoCommit: true
