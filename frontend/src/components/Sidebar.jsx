@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 const menuItems = [
-  { name: "Overview", icon: LayoutDashboard, path: "/" },
+  { name: "Overview", icon: LayoutDashboard, path: "/dashboard" },
   { name: "Tourists", icon: Users, path: "/tourists" },
     { name: "Packages", icon: Briefcase, path: "/packages" },
   { name: "Bookings", icon: CalendarDays, path: "/bookings" },
