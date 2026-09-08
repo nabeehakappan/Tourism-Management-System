@@ -14,8 +14,7 @@ import {
 const menuItems = [
   { name: "Overview", icon: LayoutDashboard, path: "/" },
   { name: "Tourists", icon: Users, path: "/tourists" },
-  { name: "Destinations", icon: Map, path: "/destinations" },
-  { name: "Packages", icon: Briefcase, path: "/packages" },
+    { name: "Packages", icon: Briefcase, path: "/packages" },
   { name: "Bookings", icon: CalendarDays, path: "/bookings" },
   { name: "Payments", icon: CreditCard, path: "/payments" },
   { name: "Guides", icon: UserRound, path: "/guides" },

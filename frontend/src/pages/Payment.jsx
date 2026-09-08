@@ -39,6 +39,14 @@ function formatAmount(amount) {
   return `₹${Number(amount).toLocaleString("en-IN")}`;
 }
 
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem("traveliaUser") || "null");
+  } catch {
+    return null;
+  }
+}
+
 function Payments() {
   const [bookings, setBookings] = useState([]);
   const [tourists, setTourists] = useState([]);
@@ -48,7 +56,14 @@ function Payments() {
   const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
-  const [paymentFilter, setPaymentFilter] = useState("All Payment Status");
+  const [paymentFilter, setPaymentFilter] =
+    useState("All Payment Status");
+
+  const [openMenu, setOpenMenu] = useState(null);
+  const [updatingStatus, setUpdatingStatus] = useState(null);
+
+  const [currentUser] = useState(getStoredUser);
+  const isAdmin = currentUser?.role === "ADMIN";
 
   useEffect(() => {
     fetchData();
@@ -59,12 +74,15 @@ function Payments() {
       setLoading(true);
       setError("");
 
-      const [bookingResponse, touristResponse, packageResponse] =
-        await Promise.all([
-          axios.get(`${API}/bookings`),
-          axios.get(`${API}/tourists`),
-          axios.get(`${API}/packages`),
-        ]);
+      const [
+        bookingResponse,
+        touristResponse,
+        packageResponse,
+      ] = await Promise.all([
+        axios.get(`${API}/bookings`),
+        axios.get(`${API}/tourists`),
+        axios.get(`${API}/packages`),
+      ]);
 
       setBookings(bookingResponse.data);
       setTourists(touristResponse.data);
@@ -81,11 +99,16 @@ function Payments() {
     const map = {};
 
     tourists.forEach((tourist) => {
-      const fullName = [tourist[1], tourist[2], tourist[3]]
+      const fullName = [
+        tourist[1],
+        tourist[2],
+        tourist[3],
+      ]
         .filter(Boolean)
         .join(" ");
 
-      map[tourist[0]] = fullName || `Tourist #${tourist[0]}`;
+      map[tourist[0]] =
+        fullName || `Tourist #${tourist[0]}`;
     });
 
     return map;
@@ -106,8 +129,12 @@ function Payments() {
       bookingId: booking[0],
       touristId: booking[1],
       packageId: booking[2],
-      tourist: touristMap[booking[1]] || `Tourist #${booking[1]}`,
-      package: packageMap[booking[2]] || `Package #${booking[2]}`,
+      tourist:
+        touristMap[booking[1]] ||
+        `Tourist #${booking[1]}`,
+      package:
+        packageMap[booking[2]] ||
+        `Package #${booking[2]}`,
       date: booking[3],
       amount: Number(booking[7] || 0),
       status: booking[6],
@@ -122,20 +149,30 @@ function Payments() {
 
       result = result.filter((payment) => {
         return (
-          String(payment.bookingId).toLowerCase().includes(query) ||
-          payment.tourist.toLowerCase().includes(query) ||
-          payment.package.toLowerCase().includes(query)
+          String(payment.bookingId)
+            .toLowerCase()
+            .includes(query) ||
+          payment.tourist
+            .toLowerCase()
+            .includes(query) ||
+          payment.package
+            .toLowerCase()
+            .includes(query)
         );
       });
     }
 
     if (paymentFilter !== "All Payment Status") {
       result = result.filter(
-        (payment) => payment.status === paymentFilter
+        (payment) =>
+          payment.status === paymentFilter
       );
     }
 
-    result.sort((a, b) => Number(a.bookingId) - Number(b.bookingId));
+    result.sort(
+      (a, b) =>
+        Number(a.bookingId) - Number(b.bookingId)
+    );
 
     return result;
   }, [payments, search, paymentFilter]);
@@ -147,14 +184,139 @@ function Payments() {
 
   const paidAmount = payments
     .filter((payment) => payment.status === "Paid")
-    .reduce((total, payment) => total + payment.amount, 0);
+    .reduce(
+      (total, payment) => total + payment.amount,
+      0
+    );
 
   const pendingAmount = payments
     .filter((payment) => payment.status === "Pending")
-    .reduce((total, payment) => total + payment.amount, 0);
+    .reduce(
+      (total, payment) => total + payment.amount,
+      0
+    );
+
+  async function handleUpdateStatus(payment, newStatus) {
+    // RBAC protection
+    if (!isAdmin) return;
+
+    try {
+      setUpdatingStatus(payment.bookingId);
+      setError("");
+      setOpenMenu(null);
+
+      const booking = bookings.find(
+        (item) => item[0] === payment.bookingId
+      );
+
+      if (!booking) {
+        setError("Booking could not be found.");
+        return;
+      }
+
+      await axios.put(
+        `${API}/bookings/${payment.bookingId}`,
+        {
+          touristId: booking[1],
+          packageId: booking[2],
+          bookingDate: formatDateForApi(booking[3]),
+          travelDate: formatDateForApi(booking[4]),
+          numberOfPeople: booking[5],
+          paymentStatus: newStatus,
+          totalAmount: booking[7],
+        }
+      );
+
+      await fetchData();
+    } catch (err) {
+      console.error(
+        "Error updating payment status:",
+        err
+      );
+
+      const message =
+        err.response?.data?.error ||
+        "Unable to update payment status.";
+
+      setError(message);
+    } finally {
+      setUpdatingStatus(null);
+    }
+  }
+
+  function formatDateForApi(dateValue) {
+    if (!dateValue) return "";
+
+    if (typeof dateValue === "string") {
+      if (/^\d{4}-\d{2}-\d{2}/.test(dateValue)) {
+        return dateValue.slice(0, 10);
+      }
+
+      const oracleMatch = dateValue.match(
+        /^(\d{2})-([A-Z]{3})-(\d{2}|\d{4})$/i
+      );
+
+      if (oracleMatch) {
+        const [
+          ,
+          day,
+          monthText,
+          yearText,
+        ] = oracleMatch;
+
+        const months = {
+          JAN: "01",
+          FEB: "02",
+          MAR: "03",
+          APR: "04",
+          MAY: "05",
+          JUN: "06",
+          JUL: "07",
+          AUG: "08",
+          SEP: "09",
+          OCT: "10",
+          NOV: "11",
+          DEC: "12",
+        };
+
+        const month =
+          months[monthText.toUpperCase()];
+
+        let year = yearText;
+
+        if (year.length === 2) {
+          year =
+            Number(year) >= 50
+              ? `19${year}`
+              : `20${year}`;
+        }
+
+        if (month) {
+          return `${year}-${month}-${day}`;
+        }
+      }
+    }
+
+    const date = new Date(dateValue);
+
+    if (Number.isNaN(date.getTime())) return "";
+
+    const year = date.getFullYear();
+    const month = String(
+      date.getMonth() + 1
+    ).padStart(2, "0");
+    const day = String(
+      date.getDate()
+    ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
 
   return (
-    <div className="space-y-8">
+    <div
+      className="space-y-8"
+      onClick={() => setOpenMenu(null)}
+    >
       {/* Header */}
       <div>
         <p className="mb-2 text-sm font-medium text-[#8B7355]">
@@ -170,8 +332,16 @@ function Payments() {
         </p>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="border border-[#E6CFCF] bg-[#FDF5F5] px-4 py-3 text-sm text-[#8B5C5C]">
+          {error}
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {/* Total Revenue */}
         <div className="border border-[#E6E1D8] bg-white p-6">
           <div className="flex items-start justify-between">
             <div>
@@ -194,6 +364,7 @@ function Payments() {
           </div>
         </div>
 
+        {/* Paid Amount */}
         <div className="border border-[#E6E1D8] bg-white p-6">
           <div className="flex items-start justify-between">
             <div>
@@ -216,6 +387,7 @@ function Payments() {
           </div>
         </div>
 
+        {/* Pending Amount */}
         <div className="border border-[#E6E1D8] bg-white p-6">
           <div className="flex items-start justify-between">
             <div>
@@ -250,7 +422,9 @@ function Payments() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
             placeholder="Search booking ID, tourist or package..."
             className="w-full border border-[#E6E1D8] bg-white py-3 pl-11 pr-4 text-sm outline-none placeholder:text-[#AAA59D] focus:border-[#8B7355]"
           />
@@ -258,7 +432,9 @@ function Payments() {
 
         <select
           value={paymentFilter}
-          onChange={(e) => setPaymentFilter(e.target.value)}
+          onChange={(e) =>
+            setPaymentFilter(e.target.value)
+          }
           className="border border-[#E6E1D8] bg-white px-4 py-3 text-sm text-[#55514B] outline-none focus:border-[#8B7355]"
         >
           <option>All Payment Status</option>
@@ -392,10 +568,76 @@ function Payments() {
                       </span>
                     </td>
 
-                    <td className="px-6 py-5">
-                      <button className="p-2 text-[#77736D] hover:bg-[#F2F0EB] hover:text-[#1C1C1C]">
-                        <MoreHorizontal size={18} />
-                      </button>
+                    {/* Admin-only actions */}
+                    <td className="relative px-6 py-5">
+                      {isAdmin && (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+
+                              setOpenMenu(
+                                openMenu ===
+                                  payment.bookingId
+                                  ? null
+                                  : payment.bookingId
+                              );
+                            }}
+                            disabled={
+                              updatingStatus ===
+                              payment.bookingId
+                            }
+                            className="p-2 text-[#77736D] hover:bg-[#F2F0EB] hover:text-[#1C1C1C] disabled:opacity-50"
+                          >
+                            <MoreHorizontal size={18} />
+                          </button>
+
+                          {openMenu === payment.bookingId && (
+                            <div
+                              onClick={(e) =>
+                                e.stopPropagation()
+                              }
+                              className="absolute right-6 top-14 z-20 w-48 border border-[#E6E1D8] bg-white py-2 shadow-lg"
+                            >
+                              <p className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-[#99958E]">
+                                Update Status
+                              </p>
+
+                              {[
+                                "Paid",
+                                "Pending",
+                                "Partial",
+                                "Cancelled",
+                              ].map((status) => (
+                                <button
+                                  key={status}
+                                  onClick={() =>
+                                    handleUpdateStatus(
+                                      payment,
+                                      status
+                                    )
+                                  }
+                                  disabled={
+                                    payment.status ===
+                                    status
+                                  }
+                                  className={`block w-full px-4 py-2.5 text-left text-sm transition ${
+                                    payment.status ===
+                                    status
+                                      ? "cursor-default bg-[#F7F5F0] font-medium text-[#8B7355]"
+                                      : "text-[#55514B] hover:bg-[#FAF9F6] hover:text-[#1C1C1C]"
+                                  }`}
+                                >
+                                  {status}
+
+                                  {payment.status ===
+                                    status && "  ✓"}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -420,4 +662,3 @@ function Payments() {
 }
 
 export default Payments;
-
