@@ -14,6 +14,14 @@ async function connectToDatabase() {
         });
 
         console.log('Connected to Oracle Database!');
+
+        const test = await connection.execute(`
+            SELECT USER, SYS_CONTEXT('USERENV', 'SERVICE_NAME')
+            FROM DUAL
+        `);
+
+        console.log('Oracle user/service:', test.rows);
+
         return connection;
 
     } catch (error) {
@@ -21,5 +29,4 @@ async function connectToDatabase() {
         throw error;
     }
 }
-
 module.exports = connectToDatabase;

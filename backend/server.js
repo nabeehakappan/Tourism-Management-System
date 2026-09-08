@@ -6,6 +6,7 @@ const packageRoutes = require('./routes/packages');
 const guideRoutes = require('./routes/guides');
 const bookingRoutes = require('./routes/bookings');
 const reviewRoutes = require('./routes/reviews');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use('/api/packages', packageRoutes);
 app.use('/api/guides', guideRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/auth', authRoutes);
 
 const PORT = 5000;
 

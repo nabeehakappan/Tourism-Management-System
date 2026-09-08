@@ -1,302 +1,1079 @@
-import { useEffect, useState } from 'react'
-import axios from 'axios'
-
+import { useEffect, useState } from "react";
+import axios from "axios";
 import {
-  Search,
-  Plus,
-  MoreHorizontal,
-  Mail,
-  Phone,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react'
+    Search,
+    Plus,
+    MoreHorizontal,
+    Mail,
+    Phone,
+    ChevronLeft,
+    ChevronRight,
+    X,
+    Pencil,
+    Trash2,
+} from "lucide-react";
 
-function getInitials(name) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .map((word) => word[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
-}
+import { isAdmin } from "../utils/auth";
 
-function Tourists() {
-  const [tourists, setTourists] = useState([])
-  const [search, setSearch] = useState('')
+const API = "http://localhost:5000/api";
 
-  useEffect(() => {
-    axios
-      .get('http://localhost:5000/api/tourists')
-      .then((response) => {
-        console.log('Tourists from API:', response.data)
-        setTourists(response.data)
-      })
-      .catch((error) => {
-        console.error('Error fetching tourists:', error)
-      })
-  }, [])
+const emptyForm = {
+    touristId: "",
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    gender: "",
+    dateOfBirth: "",
+    nationality: "",
+    email: "",
+    street: "",
+    city: "",
+    state: "",
+    pin: "",
+    phone: "",
+    guideId: "",
+};
 
-  const filteredTourists = tourists.filter((tourist) => {
-    const fullName =
-      `${tourist[1] || ''} ${tourist[2] || ''} ${tourist[3] || ''}`.trim()
+const formatDateForInput = (value) => {
+    if (!value) return "";
 
-    const nationality = tourist[6] || ''
-    const email = tourist[7] || ''
+    if (value instanceof Date && !isNaN(value.getTime())) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, "0");
+        const day = String(value.getDate()).padStart(2, "0");
 
-    const searchTerm = search.toLowerCase()
+        return `${year}-${month}-${day}`;
+    }
+
+    const stringValue = String(value).trim();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) {
+        return stringValue;
+    }
+
+    const parts = stringValue.split("-");
+
+    if (parts.length === 3) {
+        const day = parts[0].padStart(2, "0");
+        const monthName = parts[1].toUpperCase();
+        let year = parts[2];
+
+        const months = {
+            JAN: "01",
+            FEB: "02",
+            MAR: "03",
+            APR: "04",
+            MAY: "05",
+            JUN: "06",
+            JUL: "07",
+            AUG: "08",
+            SEP: "09",
+            OCT: "10",
+            NOV: "11",
+            DEC: "12",
+        };
+
+        const month = months[monthName];
+
+        if (month) {
+            if (year.length === 2) {
+                year =
+                    Number(year) >= 50
+                        ? `19${year}`
+                        : `20${year}`;
+            }
+
+            return `${year}-${month}-${day}`;
+        }
+    }
+
+    const parsedDate = new Date(stringValue);
+
+    if (!isNaN(parsedDate.getTime())) {
+        const year = parsedDate.getFullYear();
+        const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+        const day = String(parsedDate.getDate()).padStart(2, "0");
+
+        return `${year}-${month}-${day}`;
+    }
+
+    return "";
+};
+
+export default function Tourists() {
+    const admin = isAdmin();
+
+    const [tourists, setTourists] = useState([]);
+    const [guides, setGuides] = useState([]);
+    const [phones, setPhones] = useState({});
+    const [search, setSearch] = useState("");
+
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+
+    const [editingTourist, setEditingTourist] = useState(null);
+    const [form, setForm] = useState(emptyForm);
+
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+    const [openMenu, setOpenMenu] = useState(null);
+
+    const fetchTourists = async () => {
+        try {
+            const response = await axios.get(`${API}/tourists`);
+            const touristData = response.data;
+
+            setTourists(touristData);
+
+            const phoneResults = await Promise.all(
+                touristData.map(async (tourist) => {
+                    const touristId = tourist[0];
+
+                    try {
+                        const phoneResponse = await axios.get(
+                            `${API}/tourists/${touristId}/phones`
+                        );
+
+                        const phoneRows = phoneResponse.data;
+
+                        return [
+                            touristId,
+                            phoneRows.length > 0
+                                ? phoneRows[0][1]
+                                : "",
+                        ];
+                    } catch {
+                        return [touristId, ""];
+                    }
+                })
+            );
+
+            const phoneMap = {};
+
+            phoneResults.forEach(([touristId, phone]) => {
+                phoneMap[touristId] = phone;
+            });
+
+            setPhones(phoneMap);
+        } catch (err) {
+            console.error(err);
+            setError("Failed to load tourists.");
+        }
+    };
+
+    const fetchGuides = async () => {
+        try {
+            const response = await axios.get(`${API}/guides`);
+            setGuides(response.data);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    useEffect(() => {
+        fetchTourists();
+        fetchGuides();
+    }, []);
+
+    const handleFormChange = (e) => {
+        const { name, value } = e.target;
+
+        setForm((prev) => ({
+            ...prev,
+            [name]: value,
+        }));
+    };
+
+    const handleAddTourist = async (e) => {
+        e.preventDefault();
+
+        setError("");
+
+        if (
+            !form.touristId ||
+            !form.firstName ||
+            !form.lastName ||
+            !form.gender ||
+            !form.dateOfBirth ||
+            !form.nationality ||
+            !form.email ||
+            !form.city ||
+            !form.state ||
+            !form.pin
+        ) {
+            setError("Please fill in all required fields.");
+            return;
+        }
+
+        try {
+            setSaving(true);
+
+            await axios.post(`${API}/tourists`, {
+                touristId: Number(form.touristId),
+                firstName: form.firstName.trim(),
+                middleName: form.middleName.trim() || null,
+                lastName: form.lastName.trim(),
+                gender: form.gender,
+                dateOfBirth: form.dateOfBirth,
+                nationality: form.nationality.trim(),
+                email: form.email.trim(),
+                street: form.street.trim() || null,
+                city: form.city.trim(),
+                state: form.state.trim(),
+                pin: form.pin.trim(),
+                guideId: form.guideId
+                    ? Number(form.guideId)
+                    : null,
+            });
+
+            if (form.phone.trim()) {
+                await axios.post(
+                    `${API}/tourists/${Number(form.touristId)}/phones`,
+                    {
+                        phoneNo: form.phone.trim(),
+                    }
+                );
+            }
+
+            await fetchTourists();
+
+            setForm(emptyForm);
+            setShowAddModal(false);
+        } catch (err) {
+            console.error(err);
+
+            setError(
+                err.response?.data?.error ||
+                "Failed to add tourist."
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleEditTourist = (tourist) => {
+        setEditingTourist(tourist);
+
+        setForm({
+            touristId: tourist[0] ?? "",
+            firstName: tourist[1] ?? "",
+            middleName: tourist[2] ?? "",
+            lastName: tourist[3] ?? "",
+            gender: tourist[4] ?? "",
+            dateOfBirth: formatDateForInput(tourist[5]),
+            nationality: tourist[6] ?? "",
+            email: tourist[7] ?? "",
+            street: tourist[8] ?? "",
+            city: tourist[9] ?? "",
+            state: tourist[10] ?? "",
+            pin: tourist[11] ?? "",
+            phone: phones[tourist[0]] ?? "",
+            guideId: tourist[12] ?? "",
+        });
+
+        setError("");
+        setOpenMenu(null);
+        setShowEditModal(true);
+    };
+
+    const handleUpdateTourist = async (e) => {
+        e.preventDefault();
+
+        setError("");
+
+        if (
+            !form.firstName ||
+            !form.lastName ||
+            !form.gender ||
+            !form.dateOfBirth ||
+            !form.nationality ||
+            !form.email ||
+            !form.city ||
+            !form.state ||
+            !form.pin
+        ) {
+            setError("Please fill in all required fields.");
+            return;
+        }
+
+        try {
+            setSaving(true);
+
+            const touristId = Number(form.touristId);
+
+            await axios.put(`${API}/tourists/${touristId}`, {
+                firstName: form.firstName.trim(),
+                middleName: form.middleName.trim() || null,
+                lastName: form.lastName.trim(),
+                gender: form.gender,
+                dateOfBirth: form.dateOfBirth,
+                nationality: form.nationality.trim(),
+                email: form.email.trim(),
+                street: form.street.trim() || null,
+                city: form.city.trim(),
+                state: form.state.trim(),
+                pin: form.pin.trim(),
+                guideId: form.guideId
+                    ? Number(form.guideId)
+                    : null,
+            });
+
+            const oldPhone = phones[touristId] || "";
+            const newPhone = form.phone.trim();
+
+            if (oldPhone !== newPhone) {
+                if (oldPhone) {
+                    try {
+                        await axios.delete(
+                            `${API}/tourists/${touristId}/phones/${encodeURIComponent(
+                                oldPhone
+                            )}`
+                        );
+                    } catch (phoneDeleteError) {
+                        console.error(
+                            "Old phone deletion error:",
+                            phoneDeleteError
+                        );
+                    }
+                }
+
+                if (newPhone) {
+                    await axios.post(
+                        `${API}/tourists/${touristId}/phones`,
+                        {
+                            phoneNo: newPhone,
+                        }
+                    );
+                }
+            }
+
+            await fetchTourists();
+
+            setForm(emptyForm);
+            setEditingTourist(null);
+            setShowEditModal(false);
+        } catch (err) {
+            console.error(err);
+
+            setError(
+                err.response?.data?.error ||
+                "Failed to update tourist."
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDeleteTourist = async (tourist) => {
+        const touristId = tourist[0];
+        const touristName = `${tourist[1]} ${tourist[3]}`;
+
+        const confirmed = window.confirm(
+            `Are you sure you want to delete ${touristName}?`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            setError("");
+
+            await axios.delete(`${API}/tourists/${touristId}`);
+
+            setOpenMenu(null);
+
+            await fetchTourists();
+        } catch (err) {
+            console.error(err);
+
+            setError(
+                err.response?.data?.error ||
+                "Could not delete this tourist. They may have existing bookings."
+            );
+
+            setOpenMenu(null);
+        }
+    };
+
+    const filteredTourists = tourists.filter((tourist) => {
+        const touristId = tourist[0];
+        const firstName = tourist[1] || "";
+        const middleName = tourist[2] || "";
+        const lastName = tourist[3] || "";
+        const nationality = tourist[6] || "";
+        const email = tourist[7] || "";
+        const phone = phones[touristId] || "";
+
+        const fullText = `
+            ${touristId}
+            ${firstName}
+            ${middleName}
+            ${lastName}
+            ${nationality}
+            ${email}
+            ${phone}
+        `.toLowerCase();
+
+        return fullText.includes(search.toLowerCase());
+    });
+
+    const renderTouristForm = (isEdit = false) => (
+        <form
+            onSubmit={
+                isEdit
+                    ? handleUpdateTourist
+                    : handleAddTourist
+            }
+            className="p-6"
+        >
+            {error && (
+                <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {error}
+                </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Tourist ID
+                    </label>
+
+                    <input
+                        type="number"
+                        name="touristId"
+                        value={form.touristId}
+                        onChange={handleFormChange}
+                        disabled={isEdit}
+                        required
+                        className={`w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500 ${
+                            isEdit
+                                ? "bg-gray-100 text-gray-500"
+                                : "bg-white"
+                        }`}
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        First Name *
+                    </label>
+
+                    <input
+                        type="text"
+                        name="firstName"
+                        value={form.firstName}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Middle Name
+                    </label>
+
+                    <input
+                        type="text"
+                        name="middleName"
+                        value={form.middleName}
+                        onChange={handleFormChange}
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Last Name *
+                    </label>
+
+                    <input
+                        type="text"
+                        name="lastName"
+                        value={form.lastName}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Gender *
+                    </label>
+
+                    <select
+                        name="gender"
+                        value={form.gender}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    >
+                        <option value="">Select gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Date of Birth *
+                    </label>
+
+                    <input
+                        type="date"
+                        name="dateOfBirth"
+                        value={form.dateOfBirth}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Nationality *
+                    </label>
+
+                    <input
+                        type="text"
+                        name="nationality"
+                        value={form.nationality}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Email *
+                    </label>
+
+                    <input
+                        type="email"
+                        name="email"
+                        value={form.email}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Phone
+                    </label>
+
+                    <input
+                        type="text"
+                        name="phone"
+                        value={form.phone}
+                        onChange={handleFormChange}
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Street
+                    </label>
+
+                    <input
+                        type="text"
+                        name="street"
+                        value={form.street}
+                        onChange={handleFormChange}
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        City *
+                    </label>
+
+                    <input
+                        type="text"
+                        name="city"
+                        value={form.city}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        State *
+                    </label>
+
+                    <input
+                        type="text"
+                        name="state"
+                        value={form.state}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        PIN *
+                    </label>
+
+                    <input
+                        type="text"
+                        name="pin"
+                        value={form.pin}
+                        onChange={handleFormChange}
+                        required
+                        className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    />
+                </div>
+
+                <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Assigned Guide
+                    </label>
+
+                    <select
+                        name="guideId"
+                        value={form.guideId}
+                        onChange={handleFormChange}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-gray-500"
+                    >
+                        <option value="">
+                            No guide assigned
+                        </option>
+
+                        {guides.map((guide) => (
+                            <option
+                                key={guide[0]}
+                                value={guide[0]}
+                            >
+                                {guide[1]} {guide[2]} — Guide #{guide[0]}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
+            <div className="mt-7 flex justify-end gap-3">
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (isEdit) {
+                            setShowEditModal(false);
+                            setEditingTourist(null);
+                        } else {
+                            setShowAddModal(false);
+                        }
+
+                        setForm(emptyForm);
+                        setError("");
+                    }}
+                    className="rounded-lg border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+                >
+                    Cancel
+                </button>
+
+                <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    {saving
+                        ? isEdit
+                            ? "Saving..."
+                            : "Adding..."
+                        : isEdit
+                        ? "Save Changes"
+                        : "Add Tourist"}
+                </button>
+            </div>
+        </form>
+    );
 
     return (
-      fullName.toLowerCase().includes(searchTerm) ||
-      nationality.toLowerCase().includes(searchTerm) ||
-      email.toLowerCase().includes(searchTerm)
-    )
-  })
+        <div className="min-h-screen bg-[#faf9f6]">
 
-  return (
-    <div className="p-8">
+            {/* Header */}
+            <div className="border-b border-gray-200 bg-white px-8 py-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="font-serif text-3xl font-semibold text-gray-900">
+                            Tourists
+                        </h1>
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-5 mb-8">
-        <div>
-          <p className="text-sm text-[#8B7355] mb-2">
-            Traveller directory
-          </p>
+                        <p className="mt-1 text-sm text-gray-500">
+                            Manage your registered tourists
+                        </p>
+                    </div>
 
-          <h2 className="font-['Playfair_Display'] text-4xl text-[#1C1C1C]">
-            Tourists
-          </h2>
+                    {/* ADMIN ONLY */}
+                    {admin && (
+                        <button
+                            onClick={() => {
+                                setForm(emptyForm);
+                                setError("");
+                                setShowAddModal(true);
+                            }}
+                            className="flex items-center gap-2 rounded-lg bg-gray-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-gray-800"
+                        >
+                            <Plus size={18} />
+                            Add Tourist
+                        </button>
+                    )}
+                </div>
+            </div>
 
-          <p className="text-sm text-[#77736D] mt-2">
-            Manage registered tourists and their travel activity.
-          </p>
-        </div>
+            <div className="p-8">
 
-        <button className="inline-flex items-center justify-center gap-2 bg-[#1C1C1C] text-white px-5 py-3 rounded-lg text-sm hover:bg-[#333333] transition">
-          <Plus size={17} />
-          Add tourist
-        </button>
-      </div>
+                {error && !showAddModal && !showEditModal && (
+                    <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                        {error}
+                    </div>
+                )}
 
-      {/* Search */}
-      <div className="flex mb-6">
-        <div className="relative flex-1">
-          <Search
-            size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#99958E]"
-          />
+                {/* Search */}
+                <div className="mb-6 flex items-center justify-between">
+                    <div className="relative w-full max-w-md">
+                        <Search
+                            size={18}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
 
-          <input
-            type="text"
-            placeholder="Search tourists..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-white border border-[#E6E1D8] rounded-lg py-2.5 pl-10 pr-4 text-sm outline-none focus:border-[#8B7355] transition"
-          />
-        </div>
-      </div>
+                        <input
+                            type="text"
+                            placeholder="Search tourists..."
+                            value={search}
+                            onChange={(e) =>
+                                setSearch(e.target.value)
+                            }
+                            className="w-full rounded-lg border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm outline-none transition focus:border-gray-400"
+                        />
+                    </div>
 
-      {/* Table */}
-      <div className="bg-white border border-[#E6E1D8] rounded-xl overflow-hidden">
+                    <div className="text-sm text-gray-500">
+                        {filteredTourists.length} tourists
+                    </div>
+                </div>
 
-        <div className="overflow-x-auto">
+                {/* Table */}
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b border-gray-200 bg-gray-50/70">
 
-          <table className="w-full text-left">
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        Tourist
+                                    </th>
 
-            <thead>
-              <tr className="border-b border-[#E6E1D8]">
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        Contact
+                                    </th>
 
-                <th className="px-6 py-4 text-[11px] uppercase tracking-wider font-medium text-[#99958E]">
-                  Tourist
-                </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        Nationality
+                                    </th>
 
-                <th className="px-6 py-4 text-[11px] uppercase tracking-wider font-medium text-[#99958E]">
-                  Contact
-                </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        Gender
+                                    </th>
 
-                <th className="px-6 py-4 text-[11px] uppercase tracking-wider font-medium text-[#99958E]">
-                  Nationality
-                </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        City
+                                    </th>
 
-                <th className="px-6 py-4 text-[11px] uppercase tracking-wider font-medium text-[#99958E]">
-                  Gender
-                </th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        Guide
+                                    </th>
 
-                <th className="px-6 py-4 text-[11px] uppercase tracking-wider font-medium text-[#99958E]">
-                  Location
-                </th>
+                                    {/* Only show Actions column to ADMIN */}
+                                    {admin && (
+                                        <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                            Actions
+                                        </th>
+                                    )}
+                                </tr>
+                            </thead>
 
-                <th className="px-6 py-4 text-[11px] uppercase tracking-wider font-medium text-[#99958E]">
-                  Tourist ID
-                </th>
+                            <tbody className="divide-y divide-gray-100">
 
-                <th className="px-6 py-4"></th>
+                                {filteredTourists.map((tourist) => {
+                                    const touristId = tourist[0];
+                                    const firstName = tourist[1] || "";
+                                    const middleName = tourist[2] || "";
+                                    const lastName = tourist[3] || "";
+                                    const gender = tourist[4] || "";
+                                    const nationality = tourist[6] || "";
+                                    const email = tourist[7] || "";
+                                    const city = tourist[9] || "";
+                                    const guideId = tourist[12];
 
-              </tr>
-            </thead>
+                                    const guide = guides.find(
+                                        (item) =>
+                                            Number(item[0]) ===
+                                            Number(guideId)
+                                    );
 
-            <tbody>
+                                    return (
+                                        <tr
+                                            key={touristId}
+                                            className="transition hover:bg-gray-50/60"
+                                        >
+                                            <td className="px-6 py-5">
+                                                <div>
+                                                    <p className="font-medium text-gray-900">
+                                                        {firstName}{" "}
+                                                        {middleName
+                                                            ? `${middleName} `
+                                                            : ""}
+                                                        {lastName}
+                                                    </p>
 
-              {filteredTourists.map((tourist) => {
+                                                    <p className="mt-1 text-xs text-gray-400">
+                                                        #{touristId}
+                                                    </p>
+                                                </div>
+                                            </td>
 
-                const touristId = tourist[0]
+                                            <td className="px-6 py-5">
+                                                <div className="space-y-1.5">
 
-                const fullName =
-                  `${tourist[1] || ''} ${tourist[2] || ''} ${tourist[3] || ''}`.trim()
+                                                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                                                        <Mail
+                                                            size={14}
+                                                            className="text-gray-400"
+                                                        />
 
-                const gender = tourist[4]
-                const nationality = tourist[6]
-                const email = tourist[7]
+                                                        {email}
+                                                    </div>
 
-                const street = tourist[8]
-                const city = tourist[9]
-                const state = tourist[10]
+                                                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                                                        <Phone
+                                                            size={14}
+                                                            className="text-gray-400"
+                                                        />
 
-                return (
-                  <tr
-                    key={touristId}
-                    className="border-b border-[#F0ECE5] last:border-0 hover:bg-[#FCFBF8] transition"
-                  >
+                                                        {phones[touristId] ||
+                                                            "No phone"}
+                                                    </div>
+                                                </div>
+                                            </td>
 
-                    {/* Tourist */}
-                    <td className="px-6 py-5">
+                                            <td className="px-6 py-5 text-sm text-gray-600">
+                                                {nationality}
+                                            </td>
 
-                      <div className="flex items-center gap-3">
+                                            <td className="px-6 py-5">
+                                                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
+                                                    {gender}
+                                                </span>
+                                            </td>
 
-                        <div className="w-10 h-10 rounded-full bg-[#E9E1D5] flex items-center justify-center text-xs font-medium text-[#6F5D49]">
-                          {getInitials(fullName)}
-                        </div>
+                                            <td className="px-6 py-5 text-sm text-gray-600">
+                                                {city}
+                                            </td>
 
-                        <div>
+                                            <td className="px-6 py-5 text-sm text-gray-600">
+                                                {guide ? (
+                                                    `${guide[1]} ${guide[2]}`
+                                                ) : (
+                                                    <span className="text-gray-400">
+                                                        Unassigned
+                                                    </span>
+                                                )}
+                                            </td>
 
-                          <p className="text-sm font-medium text-[#1C1C1C]">
-                            {fullName}
-                          </p>
+                                            {/* ADMIN ONLY */}
+                                            {admin && (
+                                                <td className="px-6 py-5">
+                                                    <div className="relative flex justify-end">
 
-                          <p className="text-xs text-[#99958E] mt-0.5">
-                            Traveller
-                          </p>
+                                                        <button
+                                                            onClick={() =>
+                                                                setOpenMenu(
+                                                                    openMenu ===
+                                                                        touristId
+                                                                        ? null
+                                                                        : touristId
+                                                                )
+                                                            }
+                                                            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                                                        >
+                                                            <MoreHorizontal
+                                                                size={19}
+                                                            />
+                                                        </button>
 
-                        </div>
+                                                        {openMenu ===
+                                                            touristId && (
+                                                            <div className="absolute right-0 top-10 z-20 w-40 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
 
-                      </div>
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleEditTourist(
+                                                                            tourist
+                                                                        )
+                                                                    }
+                                                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+                                                                >
+                                                                    <Pencil
+                                                                        size={15}
+                                                                    />
+                                                                    Edit
+                                                                </button>
 
-                    </td>
+                                                                <button
+                                                                    onClick={() =>
+                                                                        handleDeleteTourist(
+                                                                            tourist
+                                                                        )
+                                                                    }
+                                                                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-600 transition hover:bg-red-50"
+                                                                >
+                                                                    <Trash2
+                                                                        size={15}
+                                                                    />
+                                                                    Delete
+                                                                </button>
 
-                    {/* Contact */}
-                    <td className="px-6 py-5">
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                })}
 
-                      <div className="space-y-1.5">
+                                {filteredTourists.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={admin ? 7 : 6}
+                                            className="px-6 py-12 text-center text-sm text-gray-400"
+                                        >
+                                            No tourists found.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
 
-                        <div className="flex items-center gap-2 text-xs text-[#77736D]">
-                          <Mail size={13} />
-                          {email || 'No email'}
-                        </div>
+                    {/* Pagination */}
+                    <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
 
-                        <div className="flex items-center gap-2 text-xs text-[#99958E]">
-                          <Phone size={13} />
-                          <span>Phone available</span>
-                        </div>
-
-                      </div>
-
-                    </td>
-
-                    {/* Nationality */}
-                    <td className="px-6 py-5">
-                      <span className="text-sm text-[#77736D]">
-                        {nationality || '—'}
-                      </span>
-                    </td>
-
-                    {/* Gender */}
-                    <td className="px-6 py-5">
-                      <span className="text-sm text-[#77736D]">
-                        {gender || '—'}
-                      </span>
-                    </td>
-
-                    {/* Location */}
-                    <td className="px-6 py-5">
-
-                      <div>
-                        <p className="text-sm text-[#1C1C1C]">
-                          {city || '—'}
+                        <p className="text-sm text-gray-500">
+                            Showing{" "}
+                            <span className="font-medium text-gray-700">
+                                {filteredTourists.length}
+                            </span>{" "}
+                            tourists
                         </p>
 
-                        <p className="text-xs text-[#99958E] mt-0.5">
-                          {state || street || '—'}
-                        </p>
-                      </div>
+                        <div className="flex items-center gap-2">
 
-                    </td>
+                            <button
+                                disabled
+                                className="rounded-lg border border-gray-200 p-2 text-gray-300"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
 
-                    {/* Tourist ID */}
-                    <td className="px-6 py-5">
-                      <span className="text-sm text-[#1C1C1C]">
-                        #{touristId}
-                      </span>
-                    </td>
+                            <button className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white">
+                                1
+                            </button>
 
-                    {/* Actions */}
-                    <td className="px-6 py-5 text-right">
+                            <button
+                                disabled
+                                className="rounded-lg border border-gray-200 p-2 text-gray-300"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
 
-                      <button className="w-8 h-8 rounded-lg flex items-center justify-center text-[#99958E] hover:bg-[#F7F5F0] hover:text-[#1C1C1C] transition">
-                        <MoreHorizontal size={17} />
-                      </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                    </td>
+            {/* Add Tourist Modal — ADMIN ONLY */}
+            {admin && showAddModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
 
-                  </tr>
-                )
-              })}
+                    <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
 
-              {filteredTourists.length === 0 && (
-                <tr>
-                  <td
-                    colSpan="7"
-                    className="px-6 py-12 text-center text-sm text-[#99958E]"
-                  >
-                    No tourists found.
-                  </td>
-                </tr>
-              )}
+                        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-5">
 
-            </tbody>
+                            <div>
+                                <h2 className="font-serif text-2xl font-semibold text-gray-900">
+                                    Add Tourist
+                                </h2>
 
-          </table>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Create a new tourist record
+                                </p>
+                            </div>
 
+                            <button
+                                onClick={() => {
+                                    setShowAddModal(false);
+                                    setForm(emptyForm);
+                                    setError("");
+                                }}
+                                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {renderTouristForm(false)}
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Tourist Modal — ADMIN ONLY */}
+            {admin && showEditModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+
+                    <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+
+                        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-5">
+
+                            <div>
+                                <h2 className="font-serif text-2xl font-semibold text-gray-900">
+                                    Edit Tourist
+                                </h2>
+
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Update tourist information
+                                </p>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    setShowEditModal(false);
+                                    setEditingTourist(null);
+                                    setForm(emptyForm);
+                                    setError("");
+                                }}
+                                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {renderTouristForm(true)}
+                    </div>
+                </div>
+            )}
         </div>
-
-        {/* Bottom */}
-        <div className="border-t border-[#E6E1D8] px-6 py-4 flex items-center justify-between">
-
-          <p className="text-xs text-[#99958E]">
-            Showing {filteredTourists.length} tourists
-          </p>
-
-          <div className="flex items-center gap-2">
-
-            <button className="w-8 h-8 rounded-lg border border-[#E6E1D8] flex items-center justify-center text-[#99958E] hover:bg-[#F7F5F0] transition">
-              <ChevronLeft size={15} />
-            </button>
-
-            <button className="w-8 h-8 rounded-lg bg-[#1C1C1C] text-white text-xs">
-              1
-            </button>
-
-            <button className="w-8 h-8 rounded-lg border border-[#E6E1D8] flex items-center justify-center text-[#99958E] hover:bg-[#F7F5F0] transition">
-              <ChevronRight size={15} />
-            </button>
-
-          </div>
-
-        </div>
-
-      </div>
-
-    </div>
-  )
+    );
 }
-
-export default Tourists

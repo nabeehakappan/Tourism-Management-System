@@ -22,7 +22,7 @@ export default function Login() {
                 'http://localhost:5000/api/auth/login',
                 {
                     username,
-                    password
+                    password,
                 }
             );
 
@@ -33,11 +33,10 @@ export default function Login() {
 
             // Redirect based on role
             if (user.role === 'ADMIN') {
-                navigate('/');
+                navigate('/dashboard');
             } else {
                 navigate('/packages');
             }
-
         } catch (error) {
             setError(
                 error.response?.data?.message ||
@@ -50,7 +49,6 @@ export default function Login() {
 
     return (
         <div className="min-h-screen bg-[#F7F4EE] flex items-center justify-center px-6">
-
             <div className="w-full max-w-md">
 
                 {/* Logo */}
@@ -144,7 +142,6 @@ export default function Login() {
                         >
                             {loading ? 'Signing in...' : 'Sign in'}
                         </button>
-
                     </form>
 
                     {/* Demo accounts */}
@@ -165,15 +162,12 @@ export default function Login() {
                             </p>
                         </div>
                     </div>
-
                 </div>
 
                 <p className="text-center text-xs text-gray-400 mt-6">
                     © 2026 TRAVELIA Tourism Management System
                 </p>
-
             </div>
         </div>
     );
 }
-

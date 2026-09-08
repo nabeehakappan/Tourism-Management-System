@@ -1,586 +1,1038 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import {
   Search,
-  SlidersHorizontal,
+  Plus,
   MoreHorizontal,
-  Star,
-  MapPin,
-  Languages,
-  BriefcaseBusiness,
+  Mail,
+  Phone,
+  Pencil,
+  Trash2,
+  MessageSquareText,
+  X,
 } from "lucide-react";
 
 const API = "http://localhost:5000/api";
+
+const getStoredUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem("traveliaUser") || "null");
+  } catch {
+    return null;
+  }
+};
+
+const emptyGuideForm = {
+  guideId: "",
+  firstName: "",
+  lastName: "",
+  phone: "",
+  email: "",
+  experienceYears: "",
+};
 
 function Guides() {
   const [guides, setGuides] = useState([]);
   const [packages, setPackages] = useState([]);
   const [tourists, setTourists] = useState([]);
 
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [languageFilter, setLanguageFilter] = useState("All Languages");
-  const [experienceFilter, setExperienceFilter] =
-    useState("All Experience");
+
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+
+  const [editingGuide, setEditingGuide] = useState(null);
+  const [selectedGuide, setSelectedGuide] = useState(null);
+
+  const [form, setForm] = useState(emptyGuideForm);
+
+  const [reviewForm, setReviewForm] = useState({
+    reviewText: "",
+    reviewDate: "",
+    rating: "",
+  });
+
+  const [reviews, setReviews] = useState([]);
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const [openMenu, setOpenMenu] = useState(null);
+
+  // =========================
+  // RBAC
+  // =========================
+
+  const [currentUser] = useState(getStoredUser);
+
+  const isAdmin = currentUser?.role === "ADMIN";
+
+  // =========================
+  // FETCH DATA
+  // =========================
+
+  const fetchGuides = async () => {
+    try {
+      const response = await axios.get(`${API}/guides`);
+
+      const data = response.data.map((guide) => ({
+        id: Number(guide[0]),
+        firstName: guide[1],
+        lastName: guide[2],
+        phone: guide[3],
+        email: guide[4],
+        experienceYears: guide[5],
+      }));
+
+      setGuides(data);
+    } catch (err) {
+      console.error("Error fetching guides:", err);
+      setError("Failed to load guides.");
+    }
+  };
+
+  const fetchPackages = async () => {
+    try {
+      const response = await axios.get(`${API}/packages`);
+
+      const data = response.data.map((pkg) => ({
+        id: Number(pkg[0]),
+        name: pkg[1],
+        destination: `${pkg[2]}, ${pkg[3]}`,
+        duration: pkg[5],
+        price: pkg[6],
+        type: pkg[7],
+        guideId: Number(pkg[8]),
+      }));
+
+      setPackages(data);
+    } catch (err) {
+      console.error("Error fetching packages:", err);
+    }
+  };
+
+  const fetchTourists = async () => {
+    try {
+      const response = await axios.get(`${API}/tourists`);
+
+      const data = response.data.map((tourist) => ({
+        id: Number(tourist[0]),
+        firstName: tourist[1],
+        middleName: tourist[2],
+        lastName: tourist[3],
+        guideId: Number(tourist[12]),
+      }));
+
+      setTourists(data);
+    } catch (err) {
+      console.error("Error fetching tourists:", err);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [guidesResponse, packagesResponse, touristsResponse] =
-          await Promise.all([
-            axios.get(`${API}/guides`),
-            axios.get(`${API}/packages`),
-            axios.get(`${API}/tourists`),
-          ]);
-
-        const guideRows = guidesResponse.data;
-        const packageRows = packagesResponse.data;
-        const touristRows = touristsResponse.data;
-
-        // Fetch languages and reviews for every guide
-        const detailedGuides = await Promise.all(
-          guideRows.map(async (guide) => {
-            const guideId = guide[0];
-
-            let languages = [];
-            let ratings = [];
-
-            try {
-              const languageResponse = await axios.get(
-                `${API}/guides/${guideId}/languages`
-              );
-
-              languages = languageResponse.data.map((row) => row[1]);
-            } catch (error) {
-              console.error(
-                `Error fetching languages for guide ${guideId}:`,
-                error
-              );
-            }
-
-            try {
-              const reviewResponse = await axios.get(
-                `${API}/reviews/${guideId}`
-              );
-
-              ratings = reviewResponse.data
-                .map((row) => Number(row[3]))
-                .filter((rating) => !Number.isNaN(rating));
-            } catch (error) {
-              console.error(
-                `Error fetching reviews for guide ${guideId}:`,
-                error
-              );
-            }
-
-            const averageRating =
-              ratings.length > 0
-                ? ratings.reduce((sum, rating) => sum + rating, 0) /
-                  ratings.length
-                : null;
-
-            return {
-              id: guideId,
-              firstName: guide[1],
-              lastName: guide[2],
-              phone: guide[3],
-              email: guide[4],
-              experience: Number(guide[5]) || 0,
-              languages,
-              rating: averageRating,
-            };
-          })
-        );
-
-        const mappedPackages = packageRows.map((pkg) => ({
-          packageId: pkg[0],
-          name: pkg[1],
-          city: pkg[2],
-          state: pkg[3],
-          country: pkg[4],
-          duration: Number(pkg[5]) || 0,
-          price: Number(pkg[6]) || 0,
-          type: pkg[7],
-          guideId: pkg[8],
-        }));
-
-        const mappedTourists = touristRows.map((tourist) => ({
-          touristId: tourist[0],
-          guideId: tourist[12],
-        }));
-
-        setGuides(detailedGuides);
-        setPackages(mappedPackages);
-        setTourists(mappedTourists);
-      } catch (error) {
-        console.error("Error fetching guide data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    fetchGuides();
+    fetchPackages();
+    fetchTourists();
   }, []);
 
-  // Get all languages from actual database data
-  const languages = useMemo(() => {
-    const allLanguages = guides.flatMap((guide) => guide.languages);
-
-    return [
-      "All Languages",
-      ...new Set(allLanguages.filter(Boolean)),
-    ];
-  }, [guides]);
-
-  const filteredGuides = useMemo(() => {
-    const searchTerm = search.toLowerCase().trim();
-
-    return guides.filter((guide) => {
-      const fullName =
-        `${guide.firstName} ${guide.lastName}`.toLowerCase();
-
-      const matchesSearch =
-        !searchTerm ||
-        fullName.includes(searchTerm) ||
-        guide.email.toLowerCase().includes(searchTerm) ||
-        guide.phone.toLowerCase().includes(searchTerm);
-
-      const matchesLanguage =
-        languageFilter === "All Languages" ||
-        guide.languages.includes(languageFilter);
-
-      let matchesExperience = true;
-
-      if (experienceFilter === "0–3 years") {
-        matchesExperience =
-          guide.experience >= 0 && guide.experience <= 3;
-      }
-
-      if (experienceFilter === "4–7 years") {
-        matchesExperience =
-          guide.experience >= 4 && guide.experience <= 7;
-      }
-
-      if (experienceFilter === "8+ years") {
-        matchesExperience = guide.experience >= 8;
-      }
-
-      return (
-        matchesSearch &&
-        matchesLanguage &&
-        matchesExperience
-      );
-    });
-  }, [
-    guides,
-    search,
-    languageFilter,
-    experienceFilter,
-  ]);
+  // =========================
+  // HELPERS
+  // =========================
 
   const getGuidePackages = (guideId) => {
     return packages.filter((pkg) => pkg.guideId === guideId);
   };
 
-  const getGuideTouristCount = (guideId) => {
-    return tourists.filter((tourist) => tourist.guideId === guideId)
-      .length;
+  const getGuideTourists = (guideId) => {
+    return tourists.filter((tourist) => tourist.guideId === guideId);
   };
 
-  const totalGuides = guides.length;
+  const getPrimaryPackage = (guideId) => {
+    const guidePackages = getGuidePackages(guideId);
 
-  const activeAssignments = guides.filter(
-    (guide) => getGuidePackages(guide.id).length > 0
-  ).length;
+    return guidePackages.length > 0 ? guidePackages[0] : null;
+  };
 
-  const ratedGuides = guides.filter(
-    (guide) => guide.rating !== null
-  );
+  const getGuideRating = (guideId) => {
+    const guide = guides.find((item) => item.id === guideId);
 
-  const averageRating =
-    ratedGuides.length > 0
-      ? (
-          ratedGuides.reduce(
-            (sum, guide) => sum + guide.rating,
-            0
-          ) / ratedGuides.length
-        ).toFixed(1)
-      : "—";
+    if (!guide) return null;
 
-  return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    return guide.rating || null;
+  };
+
+  // =========================
+  // SEARCH
+  // =========================
+
+  const filteredGuides = guides.filter((guide) => {
+    const query = search.toLowerCase();
+
+    const fullName = `${guide.firstName} ${guide.lastName}`.toLowerCase();
+
+    return (
+      String(guide.id).includes(query) ||
+      fullName.includes(query) ||
+      String(guide.email || "").toLowerCase().includes(query) ||
+      String(guide.phone || "").toLowerCase().includes(query)
+    );
+  });
+
+  // =========================
+  // ADD GUIDE
+  // =========================
+
+  const handleAddGuide = async (e) => {
+    e.preventDefault();
+
+    if (!isAdmin) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await axios.post(`${API}/guides`, {
+        guideId: Number(form.guideId),
+        firstName: form.firstName,
+        lastName: form.lastName,
+        phone: form.phone,
+        email: form.email,
+        experienceYears: Number(form.experienceYears),
+      });
+
+      await fetchGuides();
+
+      setForm(emptyGuideForm);
+      setShowAddModal(false);
+    } catch (err) {
+      console.error("Error adding guide:", err);
+
+      setError(
+        err.response?.data?.error ||
+          "Failed to add guide. Please check the entered details."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // =========================
+  // EDIT GUIDE
+  // =========================
+
+  const openEditModal = (guide) => {
+    if (!isAdmin) return;
+
+    setEditingGuide(guide);
+
+    setForm({
+      guideId: guide.id,
+      firstName: guide.firstName || "",
+      lastName: guide.lastName || "",
+      phone: guide.phone || "",
+      email: guide.email || "",
+      experienceYears: guide.experienceYears ?? "",
+    });
+
+    setShowEditModal(true);
+    setOpenMenu(null);
+  };
+
+  const handleEditGuide = async (e) => {
+    e.preventDefault();
+
+    if (!isAdmin || !editingGuide) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await axios.put(`${API}/guides/${editingGuide.id}`, {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        phone: form.phone,
+        email: form.email,
+        experienceYears: Number(form.experienceYears),
+      });
+
+      await fetchGuides();
+
+      setShowEditModal(false);
+      setEditingGuide(null);
+      setForm(emptyGuideForm);
+    } catch (err) {
+      console.error("Error updating guide:", err);
+
+      setError(
+        err.response?.data?.error ||
+          "Failed to update guide. Please check the entered details."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // =========================
+  // DELETE GUIDE
+  // =========================
+
+  const handleDeleteGuide = async (guideId) => {
+    if (!isAdmin) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this guide?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await axios.delete(`${API}/guides/${guideId}`);
+
+      await fetchGuides();
+
+      setOpenMenu(null);
+    } catch (err) {
+      console.error("Error deleting guide:", err);
+
+      alert(
+        err.response?.data?.error ||
+          "Unable to delete this guide. They may still be assigned to packages or tourists."
+      );
+    }
+  };
+
+  // =========================
+  // REVIEWS
+  // =========================
+
+  const openReviewModal = async (guide) => {
+    if (!isAdmin) return;
+
+    setSelectedGuide(guide);
+    setReviewForm({
+      reviewText: "",
+      reviewDate: "",
+      rating: "",
+    });
+
+    try {
+      const response = await axios.get(`${API}/reviews/${guide.id}`);
+
+      const data = response.data.map((review) => ({
+        guideId: Number(review[0]),
+        reviewText: review[1],
+        reviewDate: review[2],
+        rating: review[3],
+      }));
+
+      setReviews(data);
+    } catch (err) {
+      console.error("Error fetching reviews:", err);
+      setReviews([]);
+    }
+
+    setShowReviewModal(true);
+    setOpenMenu(null);
+  };
+
+  const handleAddReview = async (e) => {
+    e.preventDefault();
+
+    if (!isAdmin || !selectedGuide) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      await axios.post(`${API}/reviews/${selectedGuide.id}`, {
+        reviewText: reviewForm.reviewText,
+        reviewDate: reviewForm.reviewDate,
+        rating: Number(reviewForm.rating),
+      });
+
+      const response = await axios.get(
+        `${API}/reviews/${selectedGuide.id}`
+      );
+
+      const data = response.data.map((review) => ({
+        guideId: Number(review[0]),
+        reviewText: review[1],
+        reviewDate: review[2],
+        rating: review[3],
+      }));
+
+      setReviews(data);
+
+      setReviewForm({
+        reviewText: "",
+        reviewDate: "",
+        rating: "",
+      });
+    } catch (err) {
+      console.error("Error adding review:", err);
+
+      setError(
+        err.response?.data?.error || "Failed to add review."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // =========================
+  // FORM INPUT
+  // =========================
+
+  const handleFormChange = (e) => {
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const handleReviewChange = (e) => {
+    setReviewForm({
+      ...reviewForm,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  // =========================
+  // FORM COMPONENT
+  // =========================
+
+  const renderGuideForm = (isEdit = false) => (
+    <form
+      onSubmit={isEdit ? handleEditGuide : handleAddGuide}
+      className="space-y-5"
+    >
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <p className="mb-2 text-sm font-medium text-[#8B7355]">
-            Guide Management
-          </p>
+          <label className="mb-2 block text-sm font-medium text-gray-700">
+            Guide ID
+          </label>
 
-          <h1 className="font-['Playfair_Display'] text-4xl text-[#1C1C1C]">
-            Guides
-          </h1>
-
-          <p className="mt-2 text-sm text-[#77736D]">
-            Manage tour guides, languages, experience and assignments.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          className="flex items-center justify-center gap-2 bg-[#1C1C1C] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#333333]"
-        >
-          <BriefcaseBusiness size={17} />
-          Add Guide
-        </button>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {/* Total Guides */}
-        <div className="border border-[#E6E1D8] bg-white p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-[#99958E]">
-                Total Guides
-              </p>
-
-              <p className="mt-2 text-2xl font-semibold text-[#1C1C1C]">
-                {loading ? "—" : totalGuides}
-              </p>
-            </div>
-
-            <div className="bg-[#F3EFE8] p-3 text-[#8B7355]">
-              <BriefcaseBusiness size={20} />
-            </div>
-          </div>
-        </div>
-
-        {/* Active Assignments */}
-        <div className="border border-[#E6E1D8] bg-white p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-[#99958E]">
-                Active Assignments
-              </p>
-
-              <p className="mt-2 text-2xl font-semibold text-[#1C1C1C]">
-                {loading ? "—" : activeAssignments}
-              </p>
-            </div>
-
-            <div className="bg-[#EEF2EB] p-3 text-[#52614B]">
-              <MapPin size={20} />
-            </div>
-          </div>
-        </div>
-
-        {/* Average Rating */}
-        <div className="border border-[#E6E1D8] bg-white p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wider text-[#99958E]">
-                Average Rating
-              </p>
-
-              <div className="mt-2 flex items-center gap-2">
-                <span className="text-2xl font-semibold text-[#1C1C1C]">
-                  {loading ? "—" : averageRating}
-                </span>
-
-                {averageRating !== "—" && (
-                  <Star
-                    size={18}
-                    className="fill-[#8B7355] text-[#8B7355]"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="bg-[#F5EEE4] p-3 text-[#8B7355]">
-              <Star size={20} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Search + Filters */}
-      <div className="flex flex-col gap-3 lg:flex-row">
-        <div className="relative flex-1">
-          <Search
-            size={18}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-[#99958E]"
+          <input
+            type="number"
+            name="guideId"
+            value={form.guideId}
+            onChange={handleFormChange}
+            disabled={isEdit}
+            required
+            className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-gray-400"
+            placeholder="101"
           />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700">
+            Experience (Years)
+          </label>
+
+          <input
+            type="number"
+            name="experienceYears"
+            value={form.experienceYears}
+            onChange={handleFormChange}
+            min="0"
+            required
+            className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-gray-400"
+            placeholder="5"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700">
+            First Name
+          </label>
 
           <input
             type="text"
-            placeholder="Search by guide name, email or phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-[#E6E1D8] bg-white py-3 pl-11 pr-4 text-sm outline-none placeholder:text-[#AAA59D] focus:border-[#8B7355]"
+            name="firstName"
+            value={form.firstName}
+            onChange={handleFormChange}
+            required
+            className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-gray-400"
+            placeholder="Aarav"
           />
         </div>
 
-        <select
-          value={languageFilter}
-          onChange={(e) => setLanguageFilter(e.target.value)}
-          className="border border-[#E6E1D8] bg-white px-4 py-3 text-sm text-[#55514B] outline-none focus:border-[#8B7355]"
-        >
-          {languages.map((language) => (
-            <option key={language} value={language}>
-              {language}
-            </option>
-          ))}
-        </select>
+        <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700">
+            Last Name
+          </label>
 
-        <select
-          value={experienceFilter}
-          onChange={(e) =>
-            setExperienceFilter(e.target.value)
-          }
-          className="border border-[#E6E1D8] bg-white px-4 py-3 text-sm text-[#55514B] outline-none focus:border-[#8B7355]"
-        >
-          <option>All Experience</option>
-          <option>0–3 years</option>
-          <option>4–7 years</option>
-          <option>8+ years</option>
-        </select>
+          <input
+            type="text"
+            name="lastName"
+            value={form.lastName}
+            onChange={handleFormChange}
+            required
+            className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-gray-400"
+            placeholder="Sharma"
+          />
+        </div>
+      </div>
 
+      <div>
+        <label className="mb-2 block text-sm font-medium text-gray-700">
+          Email
+        </label>
+
+        <input
+          type="email"
+          name="email"
+          value={form.email}
+          onChange={handleFormChange}
+          required
+          className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-gray-400"
+          placeholder="guide@email.com"
+        />
+      </div>
+
+      <div>
+        <label className="mb-2 block text-sm font-medium text-gray-700">
+          Phone
+        </label>
+
+        <input
+          type="text"
+          name="phone"
+          value={form.phone}
+          onChange={handleFormChange}
+          required
+          className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-gray-400"
+          placeholder="+91 9876543210"
+        />
+      </div>
+
+      {error && (
+        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+          {error}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-3 pt-2">
         <button
           type="button"
-          className="flex items-center justify-center gap-2 border border-[#E6E1D8] bg-white px-4 py-3 text-sm text-[#55514B] hover:bg-[#F7F5F0]"
+          onClick={() => {
+            setShowAddModal(false);
+            setShowEditModal(false);
+            setError("");
+          }}
+          className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
         >
-          <SlidersHorizontal size={17} />
-          Filters
+          Cancel
+        </button>
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-xl bg-gray-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-gray-800 disabled:opacity-50"
+        >
+          {saving
+            ? "Saving..."
+            : isEdit
+            ? "Save Changes"
+            : "Add Guide"}
         </button>
       </div>
+    </form>
+  );
 
-      {/* Guide Count */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-[#77736D]">
-          Showing{" "}
-          <span className="font-semibold text-[#1C1C1C]">
-            {loading ? "—" : filteredGuides.length}
-          </span>{" "}
-          guides
-        </p>
+  // =========================
+  // REVIEW MODAL
+  // =========================
 
-        <div className="text-sm text-[#77736D]">
-          {search ||
-          languageFilter !== "All Languages" ||
-          experienceFilter !== "All Experience"
-            ? "Filtered results"
-            : "All guides"}
-        </div>
-      </div>
+  const renderReviewModal = () => {
+    if (!selectedGuide) return null;
 
-      {/* Loading */}
-      {loading && (
-        <div className="border border-[#E6E1D8] bg-white py-20 text-center">
-          <p className="text-sm text-[#77736D]">
-            Loading guides...
-          </p>
-        </div>
-      )}
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+        <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-7 shadow-2xl">
+          <div className="mb-6 flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                Guide Reviews
+              </p>
 
-      {/* Empty */}
-      {!loading && filteredGuides.length === 0 && (
-        <div className="border border-[#E6E1D8] bg-white py-20 text-center">
-          <p className="font-['Playfair_Display'] text-2xl text-[#1C1C1C]">
-            No guides found
-          </p>
+              <h2 className="mt-1 text-2xl font-semibold text-gray-900">
+                {selectedGuide.firstName} {selectedGuide.lastName}
+              </h2>
+            </div>
 
-          <p className="mt-2 text-sm text-[#77736D]">
-            Try changing your search or filters.
-          </p>
+            <button
+              onClick={() => setShowReviewModal(false)}
+              className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+            >
+              <X size={20} />
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setSearch("");
-              setLanguageFilter("All Languages");
-              setExperienceFilter("All Experience");
-            }}
-            className="mt-5 border border-[#E6E1D8] px-4 py-2 text-sm text-[#55514B] hover:bg-[#F7F5F0]"
-          >
-            Clear filters
-          </button>
-        </div>
-      )}
+          <div className="mb-7">
+            <h3 className="mb-3 text-sm font-semibold text-gray-900">
+              Existing Reviews
+            </h3>
 
-      {/* Guide Cards */}
-      {!loading && filteredGuides.length > 0 && (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          {filteredGuides.map((guide) => {
-            const guidePackages = getGuidePackages(guide.id);
-            const touristCount = getGuideTouristCount(guide.id);
-
-            const primaryPackage = guidePackages[0];
-
-            return (
-              <div
-                key={guide.id}
-                className="border border-[#E6E1D8] bg-white p-6 transition hover:border-[#D2C9BC]"
-              >
-                {/* Top */}
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center bg-[#E9E1D5] font-['Playfair_Display'] text-lg text-[#6F5B43]">
-                      {guide.firstName?.charAt(0)}
-                      {guide.lastName?.charAt(0)}
-                    </div>
-
-                    <div>
-                      <h2 className="font-semibold text-[#1C1C1C]">
-                        {guide.firstName} {guide.lastName}
-                      </h2>
-
-                      <p className="mt-1 text-xs text-[#99958E]">
-                        GD-{String(guide.id).padStart(3, "0")}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="p-2 text-[#77736D] hover:bg-[#F2F0EB] hover:text-[#1C1C1C]"
+            {reviews.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
+                No reviews yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {reviews.map((review, index) => (
+                  <div
+                    key={`${review.guideId}-${index}`}
+                    className="rounded-xl border border-gray-100 bg-gray-50 p-4"
                   >
-                    <MoreHorizontal size={18} />
-                  </button>
-                </div>
-
-                {/* Contact */}
-                <div className="mt-6 space-y-2">
-                  <p className="text-sm text-[#77736D]">
-                    {guide.email}
-                  </p>
-
-                  <p className="text-sm text-[#77736D]">
-                    {guide.phone}
-                  </p>
-                </div>
-
-                {/* Stats */}
-                <div className="mt-6 grid grid-cols-3 border-y border-[#EEEAE3] py-4">
-                  <div>
-                    <p className="text-xs text-[#99958E]">
-                      Experience
-                    </p>
-
-                    <p className="mt-1 text-sm font-semibold text-[#1C1C1C]">
-                      {guide.experience} years
-                    </p>
-                  </div>
-
-                  <div className="border-l border-[#EEEAE3] pl-5">
-                    <p className="text-xs text-[#99958E]">
-                      Rating
-                    </p>
-
-                    <div className="mt-1 flex items-center gap-1">
-                      {guide.rating !== null ? (
-                        <>
-                          <Star
-                            size={14}
-                            className="fill-[#8B7355] text-[#8B7355]"
-                          />
-
-                          <span className="text-sm font-semibold text-[#1C1C1C]">
-                            {guide.rating.toFixed(1)}
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <span
+                            key={star}
+                            className={
+                              star <= review.rating
+                                ? "text-amber-500"
+                                : "text-gray-300"
+                            }
+                          >
+                            ★
                           </span>
-                        </>
-                      ) : (
-                        <span className="text-sm text-[#99958E]">
-                          No rating
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="border-l border-[#EEEAE3] pl-5">
-                    <p className="text-xs text-[#99958E]">
-                      Tourists
-                    </p>
-
-                    <p className="mt-1 text-sm font-semibold text-[#1C1C1C]">
-                      {touristCount}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Languages */}
-                <div className="mt-5">
-                  <div className="mb-2 flex items-center gap-2">
-                    <Languages
-                      size={15}
-                      className="text-[#8B7355]"
-                    />
-
-                    <p className="text-xs font-medium text-[#77736D]">
-                      Languages Known
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {guide.languages.length > 0 ? (
-                      guide.languages.map((language) => (
-                        <span
-                          key={language}
-                          className="bg-[#F7F5F0] px-3 py-1.5 text-xs text-[#55514B]"
-                        >
-                          {language}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-[#99958E]">
-                        No languages recorded
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Assignment */}
-                <div className="mt-5 border-t border-[#EEEAE3] pt-5">
-                  <p className="text-xs font-medium uppercase tracking-wider text-[#99958E]">
-                    Current Assignment
-                  </p>
-
-                  {primaryPackage ? (
-                    <>
-                      <p className="mt-2 text-sm font-medium text-[#1C1C1C]">
-                        {primaryPackage.name}
-                      </p>
-
-                      <div className="mt-1 flex items-center gap-2 text-xs text-[#77736D]">
-                        <MapPin
-                          size={13}
-                          className="text-[#8B7355]"
-                        />
-
-                        {primaryPackage.city},{" "}
-                        {primaryPackage.state},{" "}
-                        {primaryPackage.country}
+                        ))}
                       </div>
 
-                      {guidePackages.length > 1 && (
-                        <p className="mt-2 text-xs text-[#99958E]">
-                          + {guidePackages.length - 1} more assigned{" "}
-                          {guidePackages.length - 1 === 1
-                            ? "package"
-                            : "packages"}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="mt-2 text-sm text-[#99958E]">
-                      No package currently assigned
+                      <span className="text-xs text-gray-400">
+                        {review.reviewDate
+                          ? new Date(review.reviewDate).toLocaleDateString()
+                          : ""}
+                      </span>
+                    </div>
+
+                    <p className="text-sm leading-6 text-gray-600">
+                      {review.reviewText}
                     </p>
-                  )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {isAdmin && (
+            <form
+              onSubmit={handleAddReview}
+              className="border-t border-gray-100 pt-6"
+            >
+              <h3 className="mb-4 text-sm font-semibold text-gray-900">
+                Add Review
+              </h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Review
+                  </label>
+
+                  <textarea
+                    name="reviewText"
+                    value={reviewForm.reviewText}
+                    onChange={handleReviewChange}
+                    required
+                    rows="3"
+                    className="w-full resize-none rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-gray-400"
+                    placeholder="Write a review..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      Review Date
+                    </label>
+
+                    <input
+                      type="date"
+                      name="reviewDate"
+                      value={reviewForm.reviewDate}
+                      onChange={handleReviewChange}
+                      required
+                      className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:border-gray-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      Rating
+                    </label>
+
+                    <select
+                      name="rating"
+                      value={reviewForm.rating}
+                      onChange={handleReviewChange}
+                      required
+                      className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:border-gray-400"
+                    >
+                      <option value="">Select rating</option>
+                      <option value="5">5 — Excellent</option>
+                      <option value="4">4 — Very Good</option>
+                      <option value="3">3 — Good</option>
+                      <option value="2">2 — Fair</option>
+                      <option value="1">1 — Poor</option>
+                    </select>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-xl bg-gray-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {saving ? "Adding..." : "Add Review"}
+                  </button>
                 </div>
               </div>
-            );
-          })}
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // =========================
+  // UI
+  // =========================
+
+  return (
+    <div className="min-h-screen bg-[#f8f7f4] p-6">
+      <div className="mx-auto max-w-7xl">
+        {/* Header */}
+        <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.25em] text-gray-400">
+              Travelia Management
+            </p>
+
+            <div className="flex items-center gap-3">
+              <h1 className="font-serif text-4xl text-gray-900">
+                Guides
+              </h1>
+
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  isAdmin
+                    ? "bg-gray-900 text-white"
+                    : "bg-gray-200 text-gray-700"
+                }`}
+              >
+                {isAdmin ? "ADMIN" : "USER"}
+              </span>
+            </div>
+
+            <p className="mt-2 text-sm text-gray-500">
+              Manage your travel guides and their assigned tours.
+            </p>
+          </div>
+
+          {isAdmin && (
+            <button
+              onClick={() => {
+                setForm(emptyGuideForm);
+                setError("");
+                setShowAddModal(true);
+              }}
+              className="flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-gray-800"
+            >
+              <Plus size={18} />
+              Add Guide
+            </button>
+          )}
+        </div>
+
+        {/* Search */}
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="relative w-full max-w-md">
+            <Search
+              size={18}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+
+            <input
+              type="text"
+              placeholder="Search guides..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm outline-none focus:border-gray-400"
+            />
+          </div>
+
+          <div className="text-sm text-gray-400">
+            {filteredGuides.length} guide
+            {filteredGuides.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+
+        {/* Guide Cards */}
+        {filteredGuides.length === 0 ? (
+          <div className="rounded-2xl border border-gray-100 bg-white p-12 text-center">
+            <p className="text-sm text-gray-400">
+              No guides found.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {filteredGuides.map((guide) => {
+              const primaryPackage = getPrimaryPackage(guide.id);
+              const guidePackages = getGuidePackages(guide.id);
+              const guideTourists = getGuideTourists(guide.id);
+              const rating = getGuideRating(guide.id);
+
+              return (
+                <div
+                  key={guide.id}
+                  className="relative overflow-visible rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  {/* Card Header */}
+                  <div className="mb-5 flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#eeeae2] font-serif text-lg text-gray-700">
+                        {guide.firstName?.charAt(0)}
+                        {guide.lastName?.charAt(0)}
+                      </div>
+
+                      <div>
+                        <h2 className="font-serif text-xl text-gray-900">
+                          {guide.firstName} {guide.lastName}
+                        </h2>
+
+                        <p className="mt-1 text-xs text-gray-400">
+                          Guide #{guide.id}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isAdmin && (
+                      <div className="relative">
+                        <button
+                          onClick={() =>
+                            setOpenMenu(
+                              openMenu === guide.id ? null : guide.id
+                            )
+                          }
+                          className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                        >
+                          <MoreHorizontal size={20} />
+                        </button>
+
+                        {openMenu === guide.id && (
+                          <div className="absolute right-0 top-10 z-20 w-44 rounded-xl border border-gray-100 bg-white p-1 shadow-xl">
+                            <button
+                              onClick={() => openEditModal(guide)}
+                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 transition hover:bg-gray-50"
+                            >
+                              <Pencil size={16} />
+                              Edit Guide
+                            </button>
+
+                            <button
+                              onClick={() => openReviewModal(guide)}
+                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 transition hover:bg-gray-50"
+                            >
+                              <MessageSquareText size={16} />
+                              Reviews
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleDeleteGuide(guide.id)
+                              }
+                              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-600 transition hover:bg-red-50"
+                            >
+                              <Trash2 size={16} />
+                              Delete Guide
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Contact */}
+                  <div className="space-y-3 border-t border-gray-100 pt-5">
+                    <div className="flex items-center gap-3 text-sm text-gray-600">
+                      <Mail size={16} className="text-gray-400" />
+                      <span className="truncate">
+                        {guide.email || "No email"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-sm text-gray-600">
+                      <Phone size={16} className="text-gray-400" />
+                      <span>
+                        {guide.phone || "No phone"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="mt-5 grid grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-gray-50 p-3 text-center">
+                      <p className="text-lg font-semibold text-gray-900">
+                        {guide.experienceYears}
+                      </p>
+
+                      <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                        Years
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-gray-50 p-3 text-center">
+                      <p className="text-lg font-semibold text-gray-900">
+                        {guidePackages.length}
+                      </p>
+
+                      <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                        Tours
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-gray-50 p-3 text-center">
+                      <p className="text-lg font-semibold text-gray-900">
+                        {guideTourists.length}
+                      </p>
+
+                      <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                        Tourists
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Assigned Package */}
+                  <div className="mt-5 border-t border-gray-100 pt-5">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                      Assigned Package
+                    </p>
+
+                    {primaryPackage ? (
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {primaryPackage.name}
+                        </p>
+
+                        <p className="mt-1 text-xs text-gray-500">
+                          {primaryPackage.destination}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400">
+                        No package assigned
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Rating */}
+                  {rating && (
+                    <div className="mt-4 flex items-center gap-2">
+                      <div className="flex gap-0.5">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <span
+                            key={star}
+                            className={
+                              star <= rating
+                                ? "text-amber-500"
+                                : "text-gray-300"
+                            }
+                          >
+                            ★
+                          </span>
+                        ))}
+                      </div>
+
+                      <span className="text-xs text-gray-400">
+                        {rating}/5
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Add Guide Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-7 shadow-2xl">
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                  Guide Management
+                </p>
+
+                <h2 className="mt-1 text-2xl font-semibold text-gray-900">
+                  Add Guide
+                </h2>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setError("");
+                }}
+                className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {renderGuideForm(false)}
+          </div>
         </div>
       )}
+
+      {/* Edit Guide Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-7 shadow-2xl">
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                  Guide Management
+                </p>
+
+                <h2 className="mt-1 text-2xl font-semibold text-gray-900">
+                  Edit Guide
+                </h2>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingGuide(null);
+                  setError("");
+                }}
+                className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {renderGuideForm(true)}
+          </div>
+        </div>
+      )}
+
+      {/* Review Modal */}
+      {showReviewModal && renderReviewModal()}
     </div>
   );
 }
