@@ -8,6 +8,7 @@ import Tourists from "./pages/Tourists";
 import Bookings from "./pages/Bookings";
 import Payments from "./pages/Payment";
 import Guides from "./pages/Guides";
+import Login from "./pages/Login"
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
             <Route path="/bookings" element={<Bookings />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/guides" element={<Guides />} />
+            <Route path="/login" element={<Login />} />
           </Routes>
         </main>
       </div>
